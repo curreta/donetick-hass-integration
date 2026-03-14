@@ -5,6 +5,7 @@ from typing import Any
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import (
     CoordinatorEntity,
@@ -59,12 +60,24 @@ def _track_new_chores(
 
         current_ids = {task.id for task in coordinator.data if task.is_active}
         new_ids = current_ids - known_ids
+        removed_ids = known_ids - current_ids
+
         if new_ids:
             new_entities = [
                 DonetickChoreSensor(coordinator, config_entry, task_id)
                 for task_id in new_ids
             ]
             async_add_entities(new_entities)
+
+        if removed_ids:
+            registry = er.async_get(hass)
+            for task_id in removed_ids:
+                unique_id = f"dt_chore_{config_entry.entry_id}_{task_id}"
+                entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+                if entity_id:
+                    _LOGGER.debug("Removing sensor for inactive chore %s", task_id)
+                    registry.async_remove(entity_id)
+
         known_ids = current_ids
 
     coordinator.async_add_listener(_on_coordinator_update)
