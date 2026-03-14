@@ -26,12 +26,23 @@ async def async_setup_chore_sensors(
     config = hass.data[DOMAIN][config_entry.entry_id]
     coordinator = config["coordinator"]
 
+    _LOGGER.warning(
+        "Chore sensor setup: coordinator.data type=%s, length=%s",
+        type(coordinator.data).__name__ if coordinator.data is not None else "None",
+        len(coordinator.data) if coordinator.data else 0,
+    )
+
     entities = []
     if coordinator.data:
         for task in coordinator.data:
+            _LOGGER.warning(
+                "Chore: id=%s name=%s is_active=%s",
+                task.id, task.name, task.is_active,
+            )
             if task.is_active:
                 entities.append(DonetickChoreSensor(coordinator, config_entry, task.id))
 
+    _LOGGER.warning("Creating %d chore sensor entities", len(entities))
     if entities:
         async_add_entities(entities)
 
