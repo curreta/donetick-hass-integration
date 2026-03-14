@@ -1,5 +1,9 @@
 
-# Donetick Home Assistant Integration
+# Donetick Home Assistant Integration (Fork)
+
+> **This is a proof-of-concept fork.** It adds per-chore sensor entities that expose task metadata (ID, assignee, due date, priority, etc.) as state attributes. This makes it possible to build custom dashboard cards that call the `donetick.*` services directly — enabling richer chore management UIs beyond what the built-in todo platform supports. See the `examples/` directory for sample dashboard cards and scripts.
+
+---
 
 
 
