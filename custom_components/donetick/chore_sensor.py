@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import (
 )
 
 from .const import DOMAIN
-from .model import DonetickTask
+from .model import DonetickMember, DonetickTask
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
 
         attrs = {
             "task_id": task.id,
-            "assigned_to": task.assigned_to,
+            "assigned_to": self._resolve_user_name(task.assigned_to),
             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
             "frequency_type": task.frequency_type,
             "frequency": task.frequency,
@@ -142,9 +142,19 @@ class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
             "labels": task.labels,
             "is_active": task.is_active,
             "description": task.description,
-            "config_entry_id": self._config_entry.entry_id,
         }
         return attrs
+
+    def _resolve_user_name(self, user_id: int | None) -> str | None:
+        """Resolve a user ID to a display name using circle members."""
+        if user_id is None:
+            return None
+        config = self.hass.data[DOMAIN].get(self._config_entry.entry_id, {})
+        members: list[DonetickMember] = config.get("circle_members", [])
+        for member in members:
+            if member.user_id == user_id:
+                return member.display_name or member.username
+        return str(user_id)
 
     @property
     def device_info(self) -> dict[str, Any]:

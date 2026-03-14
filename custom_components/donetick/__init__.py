@@ -68,12 +68,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await coordinator.async_config_entry_first_refresh()
 
+    # Fetch circle members for resolving user IDs to names
+    circle_members = []
+    try:
+        circle_members = await client.async_get_circle_members()
+    except Exception as e:
+        _LOGGER.warning("Failed to fetch circle members: %s", e)
+
     hass.data[DOMAIN][entry.entry_id] = {
         CONF_URL: entry.data[CONF_URL],
         CONF_TOKEN: entry.data[CONF_TOKEN],
         CONF_SHOW_DUE_IN: entry.data.get(CONF_SHOW_DUE_IN, 7),
         "coordinator": coordinator,
         "client": client,
+        "circle_members": circle_members,
     }
     
     # Register services before setting up platforms
