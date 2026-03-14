@@ -135,6 +135,7 @@ class DonetickChoreSensor(CoordinatorEntity, SensorEntity):
         attrs = {
             "task_id": task.id,
             "assigned_to": self._resolve_user_name(task.assigned_to),
+            "assigned_to_user_id": task.assigned_to,
             "next_due_date": task.next_due_date.isoformat() if task.next_due_date else None,
             "frequency_type": task.frequency_type,
             "frequency": task.frequency,

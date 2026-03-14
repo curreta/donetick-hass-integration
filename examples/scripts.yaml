@@ -20,8 +20,7 @@ donetick_complete_chore:
     - action: donetick.complete_task
       data:
         task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
-        completed_by: "{{ completed_by | default(omit) }}"
-        config_entry_id: "{{ state_attr(entity_id, 'config_entry_id') }}"
+        completed_by: "{{ completed_by | default(state_attr(entity_id, 'assigned_to_user_id'), omit) }}"
 
 donetick_skip_chore:
   alias: "Skip Chore"
@@ -46,8 +45,7 @@ donetick_skip_chore:
     - action: donetick.skip_task
       data:
         task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
-        completed_by: "{{ completed_by | default(omit) }}"
-        config_entry_id: "{{ state_attr(entity_id, 'config_entry_id') }}"
+        completed_by: "{{ completed_by | default(state_attr(entity_id, 'assigned_to_user_id'), omit) }}"
 
 donetick_postpone_chore:
   alias: "Postpone Chore"
@@ -76,4 +74,3 @@ donetick_postpone_chore:
         task_id: "{{ state_attr(entity_id, 'task_id') | int }}"
         due_date: >-
           {{ (as_datetime(state_attr(entity_id, 'next_due_date')) + timedelta(days=days)).isoformat() }}
-        config_entry_id: "{{ state_attr(entity_id, 'config_entry_id') }}"
