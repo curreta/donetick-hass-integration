@@ -21,8 +21,8 @@ SERVICE_UPDATE_TASK = "update_task"
 SERVICE_DELETE_TASK = "delete_task"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): cv.positive_int,
-    vol.Optional("completed_by"): cv.positive_int,
+    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("completed_by"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -30,12 +30,12 @@ CREATE_TASK_SCHEMA = vol.Schema({
     vol.Required("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
-    vol.Optional("created_by"): cv.positive_int,
+    vol.Optional("created_by"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
 UPDATE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): cv.positive_int,
+    vol.Required("task_id"): vol.Coerce(int),
     vol.Optional("name"): cv.string,
     vol.Optional("description"): cv.string,
     vol.Optional("due_date"): cv.string,
@@ -43,7 +43,7 @@ UPDATE_TASK_SCHEMA = vol.Schema({
 })
 
 DELETE_TASK_SCHEMA = vol.Schema({
-    vol.Required("task_id"): cv.positive_int,
+    vol.Required("task_id"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
