@@ -19,6 +19,7 @@ SERVICE_COMPLETE_TASK = "complete_task"
 SERVICE_CREATE_TASK = "create_task"
 SERVICE_UPDATE_TASK = "update_task"
 SERVICE_DELETE_TASK = "delete_task"
+SERVICE_SKIP_TASK = "skip_task"
 
 COMPLETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
@@ -44,6 +45,12 @@ UPDATE_TASK_SCHEMA = vol.Schema({
 
 DELETE_TASK_SCHEMA = vol.Schema({
     vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("config_entry_id"): cv.string,
+})
+
+SKIP_TASK_SCHEMA = vol.Schema({
+    vol.Required("task_id"): vol.Coerce(int),
+    vol.Optional("completed_by"): vol.Coerce(int),
     vol.Optional("config_entry_id"): cv.string,
 })
 
@@ -96,7 +103,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     
     async def delete_task_handler(call: ServiceCall) -> None:
         await async_delete_task_service(hass, call)
-    
+
+    async def skip_task_handler(call: ServiceCall) -> None:
+        await async_skip_task_service(hass, call)
+
     hass.services.async_register(
         DOMAIN,
         SERVICE_COMPLETE_TASK,
@@ -121,9 +131,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         delete_task_handler,
         schema=DELETE_TASK_SCHEMA,
     )
-    _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s", 
-                  DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK, 
-                  DOMAIN, SERVICE_UPDATE_TASK, DOMAIN, SERVICE_DELETE_TASK)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SKIP_TASK,
+        skip_task_handler,
+        schema=SKIP_TASK_SCHEMA,
+    )
+    _LOGGER.debug("Registered services: %s.%s, %s.%s, %s.%s, %s.%s, %s.%s",
+                  DOMAIN, SERVICE_COMPLETE_TASK, DOMAIN, SERVICE_CREATE_TASK,
+                  DOMAIN, SERVICE_UPDATE_TASK, DOMAIN, SERVICE_DELETE_TASK,
+                  DOMAIN, SERVICE_SKIP_TASK)
     
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -252,6 +269,28 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     except Exception as e:
         _LOGGER.error("Failed to delete task %d: %s", task_id, e)
 
+async def async_skip_task_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Handle the skip_task service call."""
+    task_id = call.data["task_id"]
+    completed_by = call.data.get("completed_by")
+    config_entry_id = call.data.get("config_entry_id")
+
+    entry = await _get_config_entry(hass, config_entry_id)
+    if not entry:
+        return
+
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    coordinator = config["coordinator"]
+
+    try:
+        result = await client.async_skip_task(task_id, completed_by)
+        _LOGGER.info("Task %d skipped successfully", task_id)
+        await coordinator.async_request_refresh()
+
+    except Exception as e:
+        _LOGGER.error("Failed to skip task %d: %s", task_id, e)
+
 async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) -> ConfigEntry:
     """Get the config entry to use for the service call."""
     entry = None
@@ -287,7 +326,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         
         # Remove services if this is the last config entry
         if not hass.data[DOMAIN]:
-            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK]:
+            for service_name in [SERVICE_COMPLETE_TASK, SERVICE_CREATE_TASK, SERVICE_UPDATE_TASK, SERVICE_DELETE_TASK, SERVICE_SKIP_TASK]:
                 if hass.services.has_service(DOMAIN, service_name):
                     hass.services.async_remove(DOMAIN, service_name)
             _LOGGER.debug("Removed services: %s.%s, %s.%s, %s.%s, %s.%s", 
