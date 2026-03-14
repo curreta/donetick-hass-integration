@@ -1,12 +1,14 @@
 """The Donetick integration."""
 import logging
+from datetime import timedelta
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from .const import DOMAIN, CONF_URL, CONF_TOKEN, CONF_SHOW_DUE_IN, CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
 from .api import DonetickApiClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -48,10 +50,30 @@ DELETE_TASK_SCHEMA = vol.Schema({
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Donetick from a config entry."""
     hass.data.setdefault(DOMAIN, {})
+
+    session = async_get_clientsession(hass)
+    client = DonetickApiClient(
+        entry.data[CONF_URL],
+        entry.data[CONF_TOKEN],
+        session,
+    )
+
+    refresh_interval_seconds = entry.data.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+    coordinator = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="donetick_chores",
+        update_method=client.async_get_tasks,
+        update_interval=timedelta(seconds=refresh_interval_seconds),
+    )
+    await coordinator.async_config_entry_first_refresh()
+
     hass.data[DOMAIN][entry.entry_id] = {
         CONF_URL: entry.data[CONF_URL],
         CONF_TOKEN: entry.data[CONF_TOKEN],
-        CONF_SHOW_DUE_IN: entry.data.get(CONF_SHOW_DUE_IN,7),
+        CONF_SHOW_DUE_IN: entry.data.get(CONF_SHOW_DUE_IN, 7),
+        "coordinator": coordinator,
+        "client": client,
     }
     
     # Register services before setting up platforms
@@ -131,27 +153,16 @@ async def async_complete_task_service(hass: HomeAssistant, call: ServiceCall) ->
             return
         entry = entries[0]
     
-    # Get API client
-    session = async_get_clientsession(hass)
-    client = DonetickApiClient(
-        hass.data[DOMAIN][entry.entry_id][CONF_URL],
-        hass.data[DOMAIN][entry.entry_id][CONF_TOKEN],
-        session,
-    )
-    
+    # Get API client and coordinator
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    coordinator = config["coordinator"]
+
     try:
         result = await client.async_complete_task(task_id, completed_by)
         _LOGGER.info("Task %d completed successfully by user %s", task_id, completed_by or "default")
-        
-        # Trigger coordinator refresh for all todo entities
-        entity_registry = hass.helpers.entity_registry.async_get()
-        for entity_id in hass.states.async_entity_ids("todo"):
-            if entity_id.startswith("todo.dt_"):
-                entity_entry = entity_registry.async_get(entity_id)
-                if entity_entry and entity_entry.config_entry_id == entry.entry_id:
-                    # Trigger update - this will refresh the coordinator
-                    await hass.helpers.entity_component.async_update_entity(entity_id)
-                    
+        await coordinator.async_request_refresh()
+
     except Exception as e:
         _LOGGER.error("Failed to complete task %d: %s", task_id, e)
 
@@ -168,21 +179,16 @@ async def async_create_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     if not entry:
         return
     
-    # Get API client
-    session = async_get_clientsession(hass)
-    client = DonetickApiClient(
-        hass.data[DOMAIN][entry.entry_id][CONF_URL],
-        hass.data[DOMAIN][entry.entry_id][CONF_TOKEN],
-        session,
-    )
-    
+    # Get API client and coordinator
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    coordinator = config["coordinator"]
+
     try:
         result = await client.async_create_task(name, description, due_date, created_by)
         _LOGGER.info("Task '%s' created successfully with ID %d", name, result.id)
-        
-        # Trigger coordinator refresh for all todo entities
-        await _refresh_todo_entities(hass, entry.entry_id)
-                    
+        await coordinator.async_request_refresh()
+
     except Exception as e:
         _LOGGER.error("Failed to create task '%s': %s", name, e)
 
@@ -199,21 +205,16 @@ async def async_update_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     if not entry:
         return
     
-    # Get API client
-    session = async_get_clientsession(hass)
-    client = DonetickApiClient(
-        hass.data[DOMAIN][entry.entry_id][CONF_URL],
-        hass.data[DOMAIN][entry.entry_id][CONF_TOKEN],
-        session,
-    )
-    
+    # Get API client and coordinator
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    coordinator = config["coordinator"]
+
     try:
         result = await client.async_update_task(task_id, name, description, due_date)
         _LOGGER.info("Task %d updated successfully", task_id)
-        
-        # Trigger coordinator refresh for all todo entities
-        await _refresh_todo_entities(hass, entry.entry_id)
-                    
+        await coordinator.async_request_refresh()
+
     except Exception as e:
         _LOGGER.error("Failed to update task %d: %s", task_id, e)
 
@@ -227,24 +228,19 @@ async def async_delete_task_service(hass: HomeAssistant, call: ServiceCall) -> N
     if not entry:
         return
     
-    # Get API client
-    session = async_get_clientsession(hass)
-    client = DonetickApiClient(
-        hass.data[DOMAIN][entry.entry_id][CONF_URL],
-        hass.data[DOMAIN][entry.entry_id][CONF_TOKEN],
-        session,
-    )
-    
+    # Get API client and coordinator
+    config = hass.data[DOMAIN][entry.entry_id]
+    client = config["client"]
+    coordinator = config["coordinator"]
+
     try:
         success = await client.async_delete_task(task_id)
         if success:
             _LOGGER.info("Task %d deleted successfully", task_id)
-            
-            # Trigger coordinator refresh for all todo entities
-            await _refresh_todo_entities(hass, entry.entry_id)
+            await coordinator.async_request_refresh()
         else:
             _LOGGER.error("Failed to delete task %d", task_id)
-                    
+
     except Exception as e:
         _LOGGER.error("Failed to delete task %d: %s", task_id, e)
 
@@ -274,16 +270,6 @@ async def _get_config_entry(hass: HomeAssistant, config_entry_id: str = None) ->
         entry = entries[0]
     
     return entry
-
-async def _refresh_todo_entities(hass: HomeAssistant, config_entry_id: str) -> None:
-    """Refresh all todo entities for the given config entry."""
-    entity_registry = hass.helpers.entity_registry.async_get()
-    for entity_id in hass.states.async_entity_ids("todo"):
-        if entity_id.startswith("todo.dt_"):
-            entity_entry = entity_registry.async_get(entity_id)
-            if entity_entry and entity_entry.config_entry_id == config_entry_id:
-                # Trigger update - this will refresh the coordinator
-                await hass.helpers.entity_component.async_update_entity(entity_id)
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""

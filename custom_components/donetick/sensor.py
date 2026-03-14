@@ -6,6 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .thing import async_setup_entry as thing_async_setup_entry
+from .chore_sensor import async_setup_chore_sensors
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -14,3 +15,4 @@ async def async_setup_entry(
 ) -> None:
     """Set up Donetick sensor entities."""
     await thing_async_setup_entry(hass, config_entry, async_add_entities, "sensor")
+    await async_setup_chore_sensors(hass, config_entry, async_add_entities)
